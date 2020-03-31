@@ -1,31 +1,30 @@
 apiVersion: v1
 kind: Template
 metadata:
+  creationTimestamp: null
   name: example-voting-app-template
 objects:
-
 - apiVersion: v1
+  stringData:
+    database-name: db
+    database-password: cG9zdGdyZXNfcGFzc3dvcmQ=
+    database-user: cG9zdGdyZXNfdXNlcg==
   kind: Secret
   metadata:
     name: db
-  data:
-    database-name: db
-    database-password: postgres_password
-    database-user: postgres_user
 
 - apiVersion: v1
+  stringData:
+    database-password: cmVkaXNfcGFzc3dvcmQ=
   kind: Secret
   metadata:
     name: redis
-  data:
-    database-password: redis_password
 
 - apiVersion: build.openshift.io/v1
   kind: BuildConfig
   metadata:
     name: result
   spec:
-    nodeSelector: null
     output:
       to:
         kind: ImageStreamTag
@@ -37,7 +36,7 @@ objects:
       contextDir: /result
       git:
         ref: master
-        uri: 'https://github.com/anshukapoor/example-voting-app.git'
+        uri: 'https://github.com/mmumshad/example-voting-app.git'
       type: Git
     strategy:
       sourceStrategy:
@@ -46,19 +45,19 @@ objects:
             value: '8080'
         from:
           kind: ImageStreamTag
-          name: 'nodejs:10'
+          name: 'nodejs:8'
           namespace: openshift
       type: Source
     triggers:
       - generic:
-          secret: b2145bad599a05c4
+          secret: 5a7ae0b1e2c90cbc
         type: Generic
       - github:
-          secret: 0e0b93ffdbd03e73
+          secret: 7832f312c9c2e7f1
         type: GitHub
       - imageChange:
           lastTriggeredImageID: >-
-            172.30.1.1:5000/openshift/nodejs@sha256:3cc041334eef8d5853078a0190e46a2998a70ad98320db512968f1de0561705e
+            docker.io/centos/nodejs-8-centos7@sha256:8d144d0e2a7d57b537e83f68a6a4aef495850788c6dd5173d1c75fbd45e5ca0b
         type: ImageChange
       - type: ConfigChange
 
@@ -76,10 +75,10 @@ objects:
     resources: {}
     runPolicy: Serial
     source:
-      contextDir: vote
+      contextDir: /vote
       git:
         ref: master
-        uri: 'https://github.com/anshukapoor/example-voting-app.git'
+        uri: 'https://github.com/mmumshad/example-voting-app.git'
       type: Git
     strategy:
       sourceStrategy:
@@ -90,17 +89,16 @@ objects:
       type: Source
     triggers:
       - generic:
-          secret: 3c0a142fca6bff85
+          secret: 92c12c3fae586bfe
         type: Generic
       - github:
-          secret: 1006ed837d558790
+          secret: 66129c2899a2892a
         type: GitHub
       - imageChange:
           lastTriggeredImageID: >-
-            172.30.1.1:5000/openshift/python@sha256:ebd2b1cf819514f134fc67346dc77fc91ae0894a37646b31a3f7674b69fdb316
+            docker.io/centos/python-36-centos7@sha256:2dad2bffe6e1c9e74e4e71f2bd2ef883511231e9dae37c1cf7b3cdff6b64ca4e
         type: ImageChange
       - type: ConfigChange
-
 - apiVersion: build.openshift.io/v1
   kind: BuildConfig
   metadata:
@@ -118,36 +116,18 @@ objects:
       contextDir: /worker
       git:
         ref: master
-        uri: 'https://github.com/anshukapoor/example-voting-app.git'
+        uri: 'https://github.com/mmumshad/example-voting-app.git'
       type: Git
     strategy:
       dockerStrategy: {}
       type: Docker
     triggers:
       - generic:
-          secret: 1ef2cbc54964298d
+          secret: 5ac5afba8e981c19
         type: Generic
       - github:
-          secret: b48ecc0799520ec3
+          secret: f65dcaaa35852fb0
         type: GitHub
-      - type: ConfigChange
-
-- apiVersion: image.openshift.io/v1
-  kind: ImageStream
-  metadata:
-    name: result
-  spec:
-    lookupPolicy:
-      local: false
-
-- apiVersion: image.openshift.io/v1
-  kind: ImageStream
-  metadata:
-    name: vote
-  spec:
-    lookupPolicy:
-      local: false
-
 - apiVersion: image.openshift.io/v1
   kind: ImageStream
   metadata:
@@ -155,16 +135,26 @@ objects:
   spec:
     lookupPolicy:
       local: false
-
-
-
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    name: result
+  spec:
+    lookupPolicy:
+      local: false
+- apiVersion: image.openshift.io/v1
+  kind: ImageStream
+  metadata:
+    name: vote
+  spec:
+    lookupPolicy:
+      local: false
 - apiVersion: apps.openshift.io/v1
   kind: DeploymentConfig
   metadata:
     name: db
   spec:
-    replicas: 0
-    revisionHistoryLimit: 10
+    replicas: 1
     selector:
       name: db
     strategy:
@@ -201,13 +191,15 @@ objects:
             livenessProbe:
               exec:
                 command:
-                  - /usr/libexec/check-container
-                  - '--live'
+                  - /bin/sh
+                  - '-i'
+                  - '-c'
+                  - pg_isready -h 127.0.0.1 -p 5432
               failureThreshold: 3
-              initialDelaySeconds: 120
+              initialDelaySeconds: 30
               periodSeconds: 10
               successThreshold: 1
-              timeoutSeconds: 10
+              timeoutSeconds: 1
             name: postgresql
             ports:
               - containerPort: 5432
@@ -215,7 +207,12 @@ objects:
             readinessProbe:
               exec:
                 command:
-                  - /usr/libexec/check-container
+                  - /bin/sh
+                  - '-i'
+                  - '-c'
+                  - >-
+                    psql -h 127.0.0.1 -U $POSTGRESQL_USER -q -d
+                    $POSTGRESQL_DATABASE -c 'SELECT 1'
               failureThreshold: 3
               initialDelaySeconds: 5
               periodSeconds: 10
@@ -254,16 +251,12 @@ objects:
           lastTriggeredImage:
         type: ImageChange
       - type: ConfigChange
-
-
-
 - apiVersion: apps.openshift.io/v1
   kind: DeploymentConfig
   metadata:
     name: redis
   spec:
-    replicas: 0
-    revisionHistoryLimit: 10
+    replicas: 1
     selector:
       name: redis
     strategy:
@@ -345,40 +338,12 @@ objects:
           lastTriggeredImage:
         type: ImageChange
       - type: ConfigChange
-  status:
-    availableReplicas: 0
-    conditions:
-      - lastTransitionTime: '2020-03-29T21:16:38Z'
-        lastUpdateTime: '2020-03-29T21:16:38Z'
-        message: replication controller "redis-1" successfully rolled out
-        reason: NewReplicationControllerAvailable
-        status: 'True'
-        type: Progressing
-      - lastTransitionTime: '2020-03-29T21:58:36Z'
-        lastUpdateTime: '2020-03-29T21:58:36Z'
-        message: Deployment config does not have minimum availability.
-        status: 'False'
-        type: Available
-    details:
-      causes:
-        - type: ConfigChange
-      message: config change
-    latestVersion: 1
-    observedGeneration: 3
-    replicas: 0
-    unavailableReplicas: 0
-    updatedReplicas: 0
-
-
-
-
-
 - apiVersion: apps.openshift.io/v1
   kind: DeploymentConfig
   metadata:
     name: result
   spec:
-    replicas: 0
+    replicas: 1
     selector:
       deploymentconfig: result
     strategy:
@@ -425,21 +390,16 @@ objects:
           from:
             kind: ImageStreamTag
             name: 'result:latest'
-            namespace: voting-application3
+            namespace: voting-application-3
           lastTriggeredImage:
         type: ImageChange
       - type: ConfigChange
-
-
-
-
-
 - apiVersion: apps.openshift.io/v1
   kind: DeploymentConfig
   metadata:
     name: vote
   spec:
-    replicas: 0
+    replicas: 1
     selector:
       deploymentconfig: vote
     strategy:
@@ -486,20 +446,16 @@ objects:
           from:
             kind: ImageStreamTag
             name: 'vote:latest'
-            namespace: voting-application3
+            namespace: voting-application-3
           lastTriggeredImage:
         type: ImageChange
       - type: ConfigChange
-
-
-
-
 - apiVersion: apps.openshift.io/v1
   kind: DeploymentConfig
   metadata:
     name: worker
   spec:
-    replicas: 0
+    replicas: 1
     selector:
       deploymentconfig: worker
     strategy:
@@ -521,6 +477,16 @@ objects:
       spec:
         containers:
           - image:
+            imagePullPolicy: Always
+            name: worker
+            ports:
+              - containerPort: 8080
+                protocol: TCP
+              - containerPort: 8443
+                protocol: TCP
+            resources: {}
+            terminationMessagePath: /dev/termination-log
+            terminationMessagePolicy: File
         dnsPolicy: ClusterFirst
         restartPolicy: Always
         schedulerName: default-scheduler
@@ -535,13 +501,10 @@ objects:
           from:
             kind: ImageStreamTag
             name: 'worker:latest'
-            namespace: voting-application3
+            namespace: voting-application-3
           lastTriggeredImage:
         type: ImageChange
       - type: ConfigChange
-
-
-
 
 - apiVersion: v1
   kind: Service
@@ -564,8 +527,6 @@ objects:
   status:
     loadBalancer: {}
 
-
-
 - apiVersion: v1
   kind: Service
   metadata:
@@ -583,7 +544,6 @@ objects:
   status:
     loadBalancer: {}
 
-
 - apiVersion: v1
   kind: Service
   metadata:
@@ -600,9 +560,6 @@ objects:
     type: ClusterIP
   status:
     loadBalancer: {}
-
-
-
 - apiVersion: v1
   kind: Service
   metadata:
@@ -619,10 +576,6 @@ objects:
     type: ClusterIP
   status:
     loadBalancer: {}
-
-
-
-
 - apiVersion: v1
   kind: Service
   metadata:
@@ -637,10 +590,6 @@ objects:
       name: redis
     sessionAffinity: None
     type: ClusterIP
-  status:
-    loadBalancer: {}
-
-
 
 - apiVersion: route.openshift.io/v1
   kind: Route
@@ -658,14 +607,12 @@ objects:
   status:
     ingress:
       - conditions:
-          - lastTransitionTime: '2020-03-29T21:35:09Z'
+          - lastTransitionTime: '2018-05-03T17:57:00Z'
             status: 'True'
             type: Admitted
         host:
         routerName: router
         wildcardPolicy: None
-
-
 
 - apiVersion: route.openshift.io/v1
   kind: Route
@@ -683,15 +630,12 @@ objects:
   status:
     ingress:
       - conditions:
-          - lastTransitionTime: '2020-03-29T21:28:09Z'
+          - lastTransitionTime: '2018-05-03T17:54:05Z'
             status: 'True'
             type: Admitted
         host:
         routerName: router
         wildcardPolicy: None
-
-
-
 
 - apiVersion: route.openshift.io/v1
   kind: Route
@@ -709,7 +653,7 @@ objects:
   status:
     ingress:
       - conditions:
-          - lastTransitionTime: '2020-03-29T21:20:28Z'
+          - lastTransitionTime: '2018-05-03T17:41:57Z'
             status: 'True'
             type: Admitted
         host:
